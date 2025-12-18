@@ -24,8 +24,8 @@ if not BOT_TOKEN:
 # =========================
 # REQUIRED CHANNEL & GROUP
 # =========================
-REQUIRED_CHANNEL = "https://t.me/adultplaygroundchannel"
-REQUIRED_GROUP = "https://t.me/adultplaygroundgroup"
+REQUIRED_CHANNEL = "@adultplaygroundchannel"
+REQUIRED_GROUP = "@adultplaygroundgroup"
 
 # =========================
 # IN-MEMORY USER STATE (DB LATER)
