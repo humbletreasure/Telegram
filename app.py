@@ -24,8 +24,8 @@ if not BOT_TOKEN:
 # =========================
 # REQUIRED CHANNEL & GROUP
 # =========================
-REQUIRED_CHANNEL = "@your_channel_username"
-REQUIRED_GROUP = "@your_group_username"
+REQUIRED_CHANNEL = "https://t.me/adultplaygroundchannel"
+REQUIRED_GROUP = "https://t.me/adultplaygroundgroup"
 
 # =========================
 # IN-MEMORY USER STATE (DB LATER)
