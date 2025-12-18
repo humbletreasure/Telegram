@@ -5,13 +5,12 @@ from telegram.ext import (
     CommandHandler,
     MessageHandler,
     ContextTypes,
-    filters
+    filters,
 )
-
-from database import add_user, get_user, get_today_limits, increment_limit
+from database import add_user, get_user
 from media import upload_video, upload_picture, get_next_video_for_user, get_next_picture_for_user
 from chat import add_user_to_queue, pair_users, send_message, end_chat, can_chat
-from vip import check_vip_status, make_user_vip
+from vip import check_vip_status
 
 # =========================
 # BOT TOKEN
@@ -29,6 +28,7 @@ REQUIRED_GROUP = "@adultplaygroundgroup"
 # =========================
 user_state = {}
 user_profile = {}
+waiting_for_media = {}  # Track if user is uploading video/picture
 
 # =========================
 # /START COMMAND
@@ -64,7 +64,7 @@ async def handle_join_done(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if user_state.get(user_id) != "JOIN_CHECK" or text != "done":
         return
 
-    # We skip actual Telegram join check in reply-based version
+    # Skip actual Telegram join check for reply-based flow
     user_state[user_id] = "ASK_AGE"
     await update.message.reply_text("✅ Verified! Please enter your age (18+ only):")
 
@@ -152,21 +152,21 @@ async def handle_menu_choice(update: Update, context: ContextTypes.DEFAULT_TYPE)
         add_user_to_queue(user_id)
         partner_id = pair_users(user_id)
         if partner_id:
-            await update.message.reply_text(f"💬 Paired! Start chatting with your partner now.")
+            await update.message.reply_text("💬 Paired! Start chatting with your partner now.")
         else:
             await update.message.reply_text("⏳ Waiting for a partner to join...")
     elif choice == "2":  # Videos
-        file_id, msg = get_next_video_for_user(user_id, vip)
-        if file_id:
-            await update.message.reply_text(f"🎥 Video ready! File ID: {file_id}")
-        else:
-            await update.message.reply_text(msg)
+        await update.message.reply_text(
+            "🎥 Videos Menu:\n"
+            "Type 'watch' to watch videos or 'upload' to send a video."
+        )
+        user_state[user_id] = "VIDEO_MENU"
     elif choice == "3":  # Pictures
-        file_id, msg = get_next_picture_for_user(user_id, vip)
-        if file_id:
-            await update.message.reply_text(f"🖼 Picture ready! File ID: {file_id}")
-        else:
-            await update.message.reply_text(msg)
+        await update.message.reply_text(
+            "🖼 Pictures Menu:\n"
+            "Type 'watch' to view pictures or 'upload' to send a picture."
+        )
+        user_state[user_id] = "PICTURE_MENU"
     elif choice == "4":  # VIP
         await update.message.reply_text("⭐ VIP system loading...\nUpgrade functionality coming soon.")
     elif choice == "5":  # Help
@@ -181,14 +181,69 @@ async def handle_menu_choice(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ Invalid choice. Please type a number from 1 to 5.")
 
 # =========================
-# MESSAGE HANDLER (CHAT REPLIES)
+# VIDEO & PICTURE HANDLERS
 # =========================
-async def handle_chat_messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_video_picture_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    if user_id in chat.active_chats:
-        success, msg = send_message(user_id, update.message.text, context.bot.send_message)
-        if not success:
-            await update.message.reply_text(msg)
+    text = update.message.text.lower()
+    vip = check_vip_status(user_id)
+
+    if user_state.get(user_id) == "VIDEO_MENU":
+        if text == "watch":
+            file_id, msg = get_next_video_for_user(user_id, vip)
+            if file_id:
+                await update.message.reply_text(f"🎥 Video ready! File ID: {file_id}")
+            else:
+                await update.message.reply_text(msg)
+        elif text == "upload":
+            waiting_for_media[user_id] = "video"
+            await update.message.reply_text("Send your video file (max 5MB).")
+        else:
+            await update.message.reply_text("Type 'watch' or 'upload'.")
+    elif user_state.get(user_id) == "PICTURE_MENU":
+        if text == "watch":
+            file_id, msg = get_next_picture_for_user(user_id, vip)
+            if file_id:
+                await update.message.reply_text(f"🖼 Picture ready! File ID: {file_id}")
+            else:
+                await update.message.reply_text(msg)
+        elif text == "upload":
+            waiting_for_media[user_id] = "picture"
+            await update.message.reply_text("Send your picture file (max 1MB).")
+        else:
+            await update.message.reply_text("Type 'watch' or 'upload'.")
+
+# =========================
+# HANDLE FILES
+# =========================
+async def handle_media_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in waiting_for_media:
+        return
+
+    media_type = waiting_for_media[user_id]
+    file = None
+    file_size_mb = 0
+
+    if media_type == "video" and update.message.video:
+        file = update.message.video
+        file_size_mb = file.file_size / (1024*1024)
+    elif media_type == "picture" and update.message.photo:
+        file = update.message.photo[-1]  # highest quality
+        file_size_mb = file.file_size / (1024*1024)
+    else:
+        await update.message.reply_text("❌ Invalid file type. Try again.")
+        return
+
+    # Upload via media.py
+    if media_type == "video":
+        success, msg = upload_video(user_id, file.file_id, file_size_mb)
+    else:
+        success, msg = upload_picture(user_id, file.file_id, file_size_mb)
+
+    await update.message.reply_text(msg)
+    if success:
+        waiting_for_media.pop(user_id)
 
 # =========================
 # MAIN
@@ -196,22 +251,25 @@ async def handle_chat_messages(update: Update, context: ContextTypes.DEFAULT_TYP
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Start & Setup
+    # Start command
     app.add_handler(CommandHandler("start", start))
 
-    # User flow handlers
+    # Join, age, gender, country
     app.add_handler(MessageHandler(filters.Regex(r"done"), handle_join_done))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_age))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_gender))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_country))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_choice))
 
-    # Chat messages
-    # app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_chat_messages))
-    # You can activate chat after integrating fully
+    # Menu
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_menu_choice))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_video_picture_menu))
+
+    # Media upload
+    app.add_handler(MessageHandler(filters.VIDEO | filters.PHOTO, handle_media_upload))
 
     print("Bot is running...")
     app.run_polling()
+
 
 if __name__ == "__main__":
     main()
