@@ -21,17 +21,19 @@ from chat import add_user_to_queue, pair_users, can_chat
 from vip import init_vip_db, grant_vip, is_vip
 
 # =========================
-# BOT TOKEN
+# CONFIG
 # =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN environment variable not set")
+    raise RuntimeError("BOT_TOKEN not set")
 
 REQUIRED_CHANNEL = "@adultplaygroundchannel"
 REQUIRED_GROUP = "@adultplaygroundgroup"
 
+BOT_OWNER_ID = 7276791218
+BOT_OWNER_USERNAME = "Humble_Treasure"
+
 user_state = {}
-user_profile = {}
 waiting_for_media = {}
 
 # =========================
@@ -49,7 +51,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ]
 
     await update.message.reply_text(
-        "18+ only.\nJoin both channel & group, then click Done.",
+        "🔞 18+ ONLY\n\nJoin BOTH channel & group, then click Done.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -81,7 +83,7 @@ async def show_main_menu(q, context):
         [InlineKeyboardButton("⭐ VIP", callback_data="menu_vip")],
         [InlineKeyboardButton("ℹ Help", callback_data="menu_help")]
     ]
-    await q.edit_message_text("Main Menu:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await q.edit_message_text("🏠 Main Menu", reply_markup=InlineKeyboardMarkup(keyboard))
 
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -89,14 +91,14 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = q.from_user.id
 
     if q.data == "menu_chat":
-        if not can_chat(uid):
-            await q.edit_message_text("Daily limit reached.")
+        if not can_chat(uid) and not is_vip(uid):
+            await q.edit_message_text("⚠ Daily limit reached. VIP removes limits.")
             return
         add_user_to_queue(uid)
         if pair_users(uid):
-            await q.edit_message_text("Paired. Start chatting.")
+            await q.edit_message_text("💬 Paired. Start chatting.")
         else:
-            await q.edit_message_text("Waiting for partner...")
+            await q.edit_message_text("⏳ Waiting for partner...")
 
     elif q.data == "menu_media":
         keyboard = [
@@ -104,13 +106,22 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("📤 Upload Media", callback_data="media_upload")],
             [InlineKeyboardButton("⬅ Back", callback_data="menu_back")]
         ]
-        await q.edit_message_text("Choose action:", reply_markup=InlineKeyboardMarkup(keyboard))
+        await q.edit_message_text("Choose:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+    elif q.data == "menu_vip":
+        if is_vip(uid):
+            await q.edit_message_text("⭐ You are already VIP.")
+        else:
+            await q.edit_message_text("⭐ Buy VIP — DM @" + BOT_OWNER_USERNAME)
 
     elif q.data == "menu_help":
-        await q.edit_message_text("DM @Humble_Treasure")
+        await q.edit_message_text("DM @" + BOT_OWNER_USERNAME)
+
+    elif q.data == "menu_back":
+        await show_main_menu(q, context)
 
 # =========================
-# MEDIA STEP 1
+# MEDIA STEP
 # =========================
 async def media_choice_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
@@ -139,13 +150,13 @@ async def media_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     q = update.callback_query
     await q.answer()
     uid = q.from_user.id
-    vip = check_vip_status(uid)
+    vip = is_vip(uid)
 
     if q.data == "watch_videos":
         f, m = get_next_video_for_user(uid, vip)
         if f:
             await context.bot.send_video(uid, f)
-            log_view(uid,"video",f)
+            log_view(uid, "video", f)
         else:
             await q.edit_message_text(m)
 
@@ -153,7 +164,7 @@ async def media_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         f, m = get_next_picture_for_user(uid, vip)
         if f:
             await context.bot.send_photo(uid, f)
-            log_view(uid,"picture",f)
+            log_view(uid, "picture", f)
         else:
             await q.edit_message_text(m)
 
@@ -177,35 +188,70 @@ async def handle_media_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
 
     t = waiting_for_media[uid]
+
     if t == "video" and update.message.video:
-        s,m = upload_video(uid, update.message.video.file_id, update.message.video.file_size/1e6)
-        if s: log_upload(uid,"video",update.message.video.file_id)
+        s, m = upload_video(uid, update.message.video.file_id, update.message.video.file_size/1e6)
+        if s:
+            log_upload(uid, "video", update.message.video.file_id)
 
     elif t == "picture" and update.message.photo:
         p = update.message.photo[-1]
-        s,m = upload_picture(uid, p.file_id, p.file_size/1e6)
-        if s: log_upload(uid,"picture",p.file_id)
+        s, m = upload_picture(uid, p.file_id, p.file_size/1e6)
+        if s:
+            log_upload(uid, "picture", p.file_id)
     else:
-        await update.message.reply_text("Wrong file type.")
+        await update.message.reply_text("❌ Wrong file type.")
         return
 
     await update.message.reply_text(m)
     waiting_for_media.pop(uid)
 
 # =========================
+# VIP COMMAND (ADMIN)
+# =========================
+async def vip_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != BOT_OWNER_ID:
+        await update.message.reply_text("❌ Unauthorized")
+        return
+
+    if len(context.args) != 2:
+        await update.message.reply_text("Usage:\n/vip <user_id> <days>")
+        return
+
+    try:
+        uid = int(context.args[0])
+        days = int(context.args[1])
+    except:
+        await update.message.reply_text("User ID & days must be numbers.")
+        return
+
+    grant_vip(uid, days)
+    await update.message.reply_text(f"✅ VIP granted to {uid} for {days} days")
+
+    try:
+        await context.bot.send_message(uid, f"⭐ You are VIP for {days} days!")
+    except:
+        pass
+
+# =========================
 # MAIN
 # =========================
 def main():
+    init_vip_db()
+
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("vip", vip_command))
+
     app.add_handler(CallbackQueryHandler(join_done_callback, pattern="join_done"))
     app.add_handler(CallbackQueryHandler(main_menu_handler, pattern="menu_"))
     app.add_handler(CallbackQueryHandler(media_choice_handler, pattern="media_"))
     app.add_handler(CallbackQueryHandler(media_button_handler, pattern="watch_|upload_|menu_back"))
+
     app.add_handler(MessageHandler(filters.VIDEO | filters.PHOTO, handle_media_upload))
 
-    print("Bot running...")
+    print("✅ Bot running...")
     app.run_polling()
 
 if __name__ == "__main__":
