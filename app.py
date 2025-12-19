@@ -24,7 +24,7 @@ from chat import add_user_to_queue, pair_users, send_message, end_chat, can_chat
 from vip import check_vip_status
 
 # =========================
-# BOT TOKEN (FROM ENV)
+# BOT TOKEN
 # =========================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 if not BOT_TOKEN:
@@ -37,7 +37,7 @@ REQUIRED_CHANNEL = "@adultplaygroundchannel"
 REQUIRED_GROUP = "@adultplaygroundgroup"
 
 # =========================
-# IN-MEMORY USER STATE
+# IN-MEMORY STATE
 # =========================
 user_state = {}
 user_profile = {}
@@ -52,7 +52,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
 
     add_user(user_id, username, 0, "", "")
-
     user_state[user_id] = "JOIN_CHECK"
 
     keyboard = [
@@ -63,11 +62,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         f"Hello @{username} 👋\n\n"
-        "Welcome as a social user to the board.\n\n"
+        "Welcome as a social user to the board.\n"
         "This is an adult space strictly for 18+ content.\n"
         "By continuing, you agree that you are responsible for your actions.\n\n"
         "⚠️ If you are under 18, you proceed at your own risk.\n\n"
-        "To continue, join BOTH our channel and group and then press Done.",
+        "Join BOTH our channel and group, then press Done.",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
@@ -91,12 +90,11 @@ async def join_done_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
             raise Exception()
     except:
         await query.edit_message_text(
-            "❌ You must join BOTH the channel and group.\n\n"
-            "Please join them and click Done again."
+            "❌ You must join BOTH the channel and group.\nClick Done again after joining."
         )
 
 # =========================
-# AGE SELECTION BUTTONS
+# AGE SELECTION
 # =========================
 async def send_age_selector(query_or_update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query_or_update.from_user.id
@@ -121,11 +119,9 @@ async def age_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     current_age = user_profile.get(user_id, {}).get("age", 18)
 
     if query.data == "age_up":
-        if current_age < 60:
-            current_age += 1
+        if current_age < 60: current_age += 1
     elif query.data == "age_down":
-        if current_age > 18:
-            current_age -= 1
+        if current_age > 18: current_age -= 1
     elif query.data == "age_confirm":
         user_profile[user_id]["age"] = current_age
         user_state[user_id] = "GENDER_SELECTION"
@@ -151,139 +147,130 @@ async def gender_button_handler(update: Update, context: ContextTypes.DEFAULT_TY
     user_id = query.from_user.id
     gender = "Male" if query.data == "gender_male" else "Female"
     user_profile[user_id]["gender"] = gender
-    user_state[user_id] = "ASK_COUNTRY"
-    await query.edit_message_text("Please type your country:")
+    user_state[user_id] = "COUNTRY_SELECTION"
+    await send_country_selector(query)
 
 # =========================
-# COUNTRY HANDLER
+# COUNTRY SELECTION
 # =========================
-async def handle_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    if user_state.get(user_id) != "ASK_COUNTRY":
-        return
-    country = update.message.text.strip()
+COUNTRIES = ["Nigeria", "USA", "UK", "India", "Canada", "Germany", "France", "Other"]
+async def send_country_selector(query):
+    keyboard = [[InlineKeyboardButton(c, callback_data=f"country_{c}")] for c in COUNTRIES]
+    await query.edit_message_text("Select your country:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def country_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
+    country = query.data.replace("country_", "")
     user_profile[user_id]["country"] = country
     user_state[user_id] = "MAIN_MENU"
-    await show_main_menu(update, context)
+    await show_main_menu(query, context)
 
 # =========================
 # MAIN MENU
 # =========================
-async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def show_main_menu(query_or_update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💬 Chat", callback_data="menu_chat")],
-        [InlineKeyboardButton("🎥 Media", callback_data="menu_media")],
+        [InlineKeyboardButton("🎥 Videos/Pictures", callback_data="menu_media")],
         [InlineKeyboardButton("⭐ VIP", callback_data="menu_vip")],
         [InlineKeyboardButton("ℹ Help", callback_data="menu_help")],
         [InlineKeyboardButton("📜 Rules", callback_data="menu_rules")],
         [InlineKeyboardButton("🤖 About", callback_data="menu_about")]
     ]
-    await update.message.reply_text("🏠 Main Menu\nChoose an option:", reply_markup=InlineKeyboardMarkup(keyboard))
+    text = "🏠 Main Menu\nChoose an option:"
+    if isinstance(query_or_update, Update):
+        await query_or_update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await query_or_update.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard))
 
-# =========================
-# MAIN MENU HANDLER
-# =========================
 async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
     data = query.data
+
     vip = check_vip_status(user_id)
 
     if data == "menu_chat":
-        await send_chat_menu(user_id, query)
-    elif data == "menu_media":
-        await send_media_menu(user_id, query, context)
-    elif data == "menu_vip":
-        await query.edit_message_text("⭐ VIP system loading...")
-    elif data == "menu_help":
-        await help_command(query, context)
-    elif data == "menu_rules":
-        await rules_command(query, context)
-    elif data == "menu_about":
-        await about_command(query, context)
-    elif data.startswith("chat_"):
-        await handle_chat_buttons(query, data, user_id)
-
-# =========================
-# CHAT BUTTONS
-# =========================
-async def send_chat_menu(user_id, query):
-    if not can_chat(user_id):
-        await query.edit_message_text("⚠ Daily chat limit reached. Upgrade to VIP for unlimited chats.")
-        return
-    keyboard = [
-        [InlineKeyboardButton("💬 Start Chat", callback_data="chat_start")],
-        [InlineKeyboardButton("⏹ End Chat", callback_data="chat_end")],
-        [InlineKeyboardButton("⬅ Back to Main Menu", callback_data="menu_back")]
-    ]
-    await query.edit_message_text("Chat Menu:", reply_markup=InlineKeyboardMarkup(keyboard))
-
-async def handle_chat_buttons(query, data, user_id):
-    if data == "chat_start":
+        if not can_chat(user_id):
+            await query.edit_message_text("⚠ Daily chat limit reached. Upgrade to VIP for unlimited chats.")
+            return
         add_user_to_queue(user_id)
         partner_id = pair_users(user_id)
         if partner_id:
             await query.edit_message_text("💬 Paired! Start chatting now.")
         else:
             await query.edit_message_text("⏳ Waiting for a partner...")
-    elif data == "chat_end":
-        end_chat(user_id)
-        await query.edit_message_text("⏹ Chat ended.")
-    elif data == "menu_back":
-        user_state[user_id] = "MAIN_MENU"
-        await show_main_menu(query, query._bot)  # send back main menu
+    elif data == "menu_media":
+        await send_media_choice(query)
+    elif data == "menu_vip":
+        await query.edit_message_text("⭐ VIP system loading...")
+    elif data == "menu_help":
+        await query.edit_message_text(f"💬 DM the bot owner: @{BOT_OWNER_USERNAME}")
+    elif data == "menu_rules":
+        await query.edit_message_text(
+            "📜 Bot Rules:\n1. 18+ only\n2. Be respectful\n3. No illegal content\n4. No spamming\n5. Follow instructions"
+        )
+    elif data == "menu_about":
+        await query.edit_message_text(
+            "🤖 About:\nAdult social bot. Chat, upload videos/pictures, VIP perks, button navigation."
+        )
 
 # =========================
-# MEDIA MENU BUTTONS
+# MEDIA CHOICE
 # =========================
-async def send_media_menu(user_id, query_or_update, context: ContextTypes.DEFAULT_TYPE):
+async def send_media_choice(query):
     keyboard = [
         [InlineKeyboardButton("🎥 Watch Videos", callback_data="watch_videos")],
         [InlineKeyboardButton("🖼 Watch Pictures", callback_data="watch_pictures")],
-        [InlineKeyboardButton("⬆ Upload Video", callback_data="upload_video")],
-        [InlineKeyboardButton("⬆ Upload Picture", callback_data="upload_picture")],
-        [InlineKeyboardButton("⬅ Back to Main Menu", callback_data="menu_back")]
+        [InlineKeyboardButton("📤 Upload Video", callback_data="upload_video")],
+        [InlineKeyboardButton("📤 Upload Picture", callback_data="upload_picture")],
+        [InlineKeyboardButton("⬅ Back", callback_data="menu_back")]
     ]
-    await query_or_update.edit_message_text("Choose an action:", reply_markup=InlineKeyboardMarkup(keyboard))
+    await query.edit_message_text("Select an action:", reply_markup=InlineKeyboardMarkup(keyboard))
 
-async def media_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def media_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
+    data = query.data
     vip = check_vip_status(user_id)
 
-    if query.data == "watch_videos":
+    if data == "watch_videos":
         file_id, msg = get_next_video_for_user(user_id, vip)
         if file_id:
-            await query.message.reply_video(file_id)
+            await query.edit_message_text("🎥 Playing Video...")
+            await context.bot.send_video(chat_id=user_id, video=file_id)
             log_view(user_id, "video", file_id)
         else:
-            await query.message.reply_text(msg)
-    elif query.data == "watch_pictures":
+            await query.edit_message_text(msg)
+    elif data == "watch_pictures":
         file_id, msg = get_next_picture_for_user(user_id, vip)
         if file_id:
-            await query.message.reply_photo(file_id)
+            await query.edit_message_text("🖼 Showing Picture...")
+            await context.bot.send_photo(chat_id=user_id, photo=file_id)
             log_view(user_id, "picture", file_id)
         else:
-            await query.message.reply_text(msg)
-    elif query.data == "upload_video":
+            await query.edit_message_text(msg)
+    elif data == "upload_video":
         waiting_for_media[user_id] = "video"
         await query.edit_message_text("Send your video file (max 5MB).")
-    elif query.data == "upload_picture":
+    elif data == "upload_picture":
         waiting_for_media[user_id] = "picture"
         await query.edit_message_text("Send your picture file (max 1MB).")
-    elif query.data == "menu_back":
-        user_state[user_id] = "MAIN_MENU"
+    elif data == "menu_back":
         await show_main_menu(query, context)
 
 # =========================
-# HANDLE MEDIA UPLOAD
+# MEDIA UPLOAD
 # =========================
 async def handle_media_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     if user_id not in waiting_for_media:
         return
+
     media_type = waiting_for_media[user_id]
     file = None
     file_size_mb = 0
@@ -292,14 +279,12 @@ async def handle_media_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         file = update.message.video
         file_size_mb = file.file_size / (1024*1024)
         success, msg = upload_video(user_id, file.file_id, file_size_mb)
-        if success:
-            log_upload(user_id, "video", file.file_id)
+        if success: log_upload(user_id, "video", file.file_id)
     elif media_type == "picture" and update.message.photo:
         file = update.message.photo[-1]
         file_size_mb = file.file_size / (1024*1024)
         success, msg = upload_picture(user_id, file.file_id, file_size_mb)
-        if success:
-            log_upload(user_id, "picture", file.file_id)
+        if success: log_upload(user_id, "picture", file.file_id)
     else:
         await update.message.reply_text("❌ Invalid file type.")
         return
@@ -309,44 +294,14 @@ async def handle_media_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         waiting_for_media.pop(user_id)
 
 # =========================
-# /HELP, /RULES, /ABOUT COMMANDS
+# BOT HELP
 # =========================
 BOT_OWNER_USERNAME = "Humble_Treasure"
-
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        f"💬 Need help? You can DM the bot owner directly:\n"
-        f"Telegram: @{Humble_Treasure}\n\n"
-        "Or use the main menu /start to navigate the bot features."
-    )
-
-async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    rules_text = (
-        "📜 Bot Rules:\n\n"
-        "1️⃣ This space is strictly 18+.\n"
-        "2️⃣ Be respectful to other users.\n"
-        "3️⃣ Do not share illegal content.\n"
-        "4️⃣ Spamming or harassment is prohibited.\n"
-        "5️⃣ Follow instructions provided by the bot.\n"
-        "6️⃣ VIP features are optional but offer extra perks.\n\n"
-        "⚠ Violating rules may result in restriction or ban."
-    )
-    await update.message.reply_text(rules_text)
-
-async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    about_text = (
-        "🤖 About This Bot:\n\n"
-        "This is an adult-only social bot for 18+ users to chat, "
-        "share videos and pictures safely, and enjoy VIP features.\n\n"
-        "• Fully interactive button-based navigation.\n"
-        "• Supports chat pairing, media upload, and viewing.\n"
-        "• Age verification and content restrictions in place.\n\n"
-        "Use /start to begin your experience."
-    )
-    await update.message.reply_text(about_text)
+    await update.message.reply_text(f"💬 DM @{BOT_OWNER_USERNAME} for help!")
 
 # =========================
-# ADMIN /stats
+# ADMIN STATS
 # =========================
 BOT_OWNER_ID = 7276791218
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -366,18 +321,25 @@ def main():
     # Commands
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("help", help_command))
-    app.add_handler(CommandHandler("rules", rules_command))
-    app.add_handler(CommandHandler("about", about_command))
     app.add_handler(CommandHandler("stats", stats))
 
-    # CallbackQueryHandlers
+    # Join Done
     app.add_handler(CallbackQueryHandler(join_done_callback, pattern="join_done"))
-    app.add_handler(CallbackQueryHandler(age_button_handler, pattern="age_"))
-    app.add_handler(CallbackQueryHandler(gender_button_handler, pattern="gender_"))
-    app.add_handler(CallbackQueryHandler(main_menu_handler, pattern="^(menu_|chat_|watch_|upload_|menu_back)$"))
 
-    # Country input
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_country))
+    # Age buttons
+    app.add_handler(CallbackQueryHandler(age_button_handler, pattern="age_"))
+
+    # Gender buttons
+    app.add_handler(CallbackQueryHandler(gender_button_handler, pattern="gender_"))
+
+    # Country buttons
+    app.add_handler(CallbackQueryHandler(country_button_handler, pattern="country_"))
+
+    # Main menu buttons
+    app.add_handler(CallbackQueryHandler(main_menu_handler, pattern="menu_"))
+
+    # Media buttons
+    app.add_handler(CallbackQueryHandler(media_button_handler, pattern="watch_|upload_|menu_back"))
 
     # Media upload
     app.add_handler(MessageHandler(filters.VIDEO | filters.PHOTO, handle_media_upload))
