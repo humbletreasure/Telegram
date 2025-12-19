@@ -7,6 +7,7 @@ from telegram.ext import (
     ContextTypes,
     filters,
 )
+from analytics import log_upload, log_view, get_global_stats, get_user_stats
 from database import add_user, get_user
 from media import (
     upload_video,
