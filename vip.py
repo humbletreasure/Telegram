@@ -1,42 +1,59 @@
-from database import set_vip, is_vip, get_user
+import sqlite3
+import time
 
-# =========================
-# VIP FUNCTIONS
-# =========================
+DB_NAME = "vip.db"
 
-def make_user_vip(user_id):
-    """
-    Set a user as VIP
-    """
-    set_vip(user_id, 1)
-    return f"✅ User {user_id} is now a VIP!"
+def init_vip_db():
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS vip_users (
+            user_id INTEGER PRIMARY KEY,
+            expires_at INTEGER
+        )
+    """)
+    conn.commit()
+    conn.close()
 
-def remove_vip(user_id):
-    """
-    Remove VIP status from a user
-    """
-    set_vip(user_id, 0)
-    return f"✅ User {user_id} is no longer a VIP."
+def grant_vip(user_id: int, days: int):
+    expires_at = int(time.time()) + days * 86400
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute(
+        "INSERT OR REPLACE INTO vip_users (user_id, expires_at) VALUES (?, ?)",
+        (user_id, expires_at)
+    )
+    conn.commit()
+    conn.close()
 
-def check_vip_status(user_id):
-    """
-    Returns True if user is VIP, False otherwise
-    """
-    return is_vip(user_id)
+def is_vip(user_id: int) -> bool:
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT expires_at FROM vip_users WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
 
-def vip_info(user_id):
-    """
-    Returns user info including VIP status
-    """
-    user = get_user(user_id)
-    if not user:
-        return None
-    info = {
-        "user_id": user[0],
-        "username": user[1],
-        "age": user[2],
-        "gender": user[3],
-        "country": user[4],
-        "vip": bool(user[5])
-    }
-    return info
+    if not row:
+        return False
+
+    expires_at = row[0]
+    if time.time() > expires_at:
+        remove_vip(user_id)
+        return False
+
+    return True
+
+def remove_vip(user_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("DELETE FROM vip_users WHERE user_id = ?", (user_id,))
+    conn.commit()
+    conn.close()
+
+def get_vip_expiry(user_id: int):
+    conn = sqlite3.connect(DB_NAME)
+    c = conn.cursor()
+    c.execute("SELECT expires_at FROM vip_users WHERE user_id = ?", (user_id,))
+    row = c.fetchone()
+    conn.close()
+    return row[0] if row else None
