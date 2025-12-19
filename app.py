@@ -265,7 +265,7 @@ async def handle_media_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     # Only bot owner/admin should see full stats
-    BOT_OWNER_ID = @Humble_Treasure  # Replace with your Telegram ID
+    BOT_OWNER_ID = "Humble_Treasure"  # Replace with your Telegram ID
     if user_id != BOT_OWNER_ID:
         await update.message.reply_text("❌ You are not authorized to view stats.")
         return
