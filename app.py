@@ -12,10 +12,14 @@ from media import upload_video, upload_picture, get_next_video_for_user, get_nex
 from chat import add_user_to_queue, pair_users, send_message, end_chat, can_chat
 from vip import check_vip_status
 
+import os
+
 # =========================
-# BOT TOKEN
+# BOT TOKEN (FROM ENV)
 # =========================
-BOT_TOKEN = "8587121023:AAGhCHgjTr7s95WH-IN17_z5cU8uHZC_wdY"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise RuntimeError("BOT_TOKEN environment variable not set")
 
 # =========================
 # REQUIRED CHANNEL & GROUP
