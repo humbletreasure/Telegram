@@ -80,14 +80,12 @@ async def join_done_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     user_id = query.from_user.id
 
     try:
-        # Real join check
         channel_member = await context.bot.get_chat_member(REQUIRED_CHANNEL, user_id)
         group_member = await context.bot.get_chat_member(REQUIRED_GROUP, user_id)
 
         if channel_member.status in ["member", "administrator", "creator"] and \
            group_member.status in ["member", "administrator", "creator"]:
             user_state[user_id] = "AGE_SELECTION"
-            # Start age selection with buttons
             await send_age_selector(query, context)
         else:
             raise Exception()
@@ -102,7 +100,6 @@ async def join_done_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # =========================
 async def send_age_selector(query_or_update, context: ContextTypes.DEFAULT_TYPE):
     user_id = query_or_update.from_user.id
-    # default age 18 if not set
     current_age = user_profile.get(user_id, {}).get("age", 18)
     keyboard = [
         [
@@ -135,7 +132,6 @@ async def age_button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await send_gender_selector(query)
         return
 
-    # Update current age
     user_profile.setdefault(user_id, {})["age"] = current_age
     await send_age_selector(query, context)
 
@@ -176,10 +172,11 @@ async def handle_country(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def show_main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💬 Chat", callback_data="menu_chat")],
-        [InlineKeyboardButton("🎥 Videos", callback_data="menu_videos")],
-        [InlineKeyboardButton("🖼 Pictures", callback_data="menu_pictures")],
+        [InlineKeyboardButton("🎥 Media", callback_data="menu_media")],
         [InlineKeyboardButton("⭐ VIP", callback_data="menu_vip")],
-        [InlineKeyboardButton("ℹ Help", callback_data="menu_help")]
+        [InlineKeyboardButton("ℹ Help", callback_data="menu_help")],
+        [InlineKeyboardButton("📜 Rules", callback_data="menu_rules")],
+        [InlineKeyboardButton("🤖 About", callback_data="menu_about")]
     ]
     await update.message.reply_text("🏠 Main Menu\nChoose an option:", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -200,53 +197,66 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text("💬 Paired! Start chatting now.")
         else:
             await query.edit_message_text("⏳ Waiting for a partner...")
-    elif data == "menu_videos":
-        user_state[user_id] = "VIDEO_MENU"
-        await query.edit_message_text("🎥 Videos Menu:\nType 'watch' or 'upload'.")
-    elif data == "menu_pictures":
-        user_state[user_id] = "PICTURE_MENU"
-        await query.edit_message_text("🖼 Pictures Menu:\nType 'watch' or 'upload'.")
+    elif data == "menu_media":
+        await send_media_menu(user_id, query, context)
     elif data == "menu_vip":
         await query.edit_message_text("⭐ VIP system loading...")
     elif data == "menu_help":
-        await query.edit_message_text(
-            "ℹ Help\n• Adults only (18+)\n• Be respectful\n• Follow rules\nUse /start to restart."
-        )
+        await help_command(query, context)
+    elif data == "menu_rules":
+        await rules_command(query, context)
+    elif data == "menu_about":
+        await about_command(query, context)
 
 # =========================
-# VIDEO & PICTURE HANDLERS
+# MEDIA MENU BUTTONS
 # =========================
-async def handle_video_picture_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = update.effective_user.id
-    text = update.message.text.lower()
+async def send_media_menu(user_id, query_or_update, context: ContextTypes.DEFAULT_TYPE):
+    keyboard = [
+        [InlineKeyboardButton("🎥 Watch Videos", callback_data="watch_videos")],
+        [InlineKeyboardButton("🖼 Watch Pictures", callback_data="watch_pictures")],
+        [InlineKeyboardButton("⬆ Upload Video", callback_data="upload_video")],
+        [InlineKeyboardButton("⬆ Upload Picture", callback_data="upload_picture")],
+        [InlineKeyboardButton("⬅ Back to Main Menu", callback_data="menu_back")]
+    ]
+    if isinstance(query_or_update, Update):
+        await query_or_update.message.reply_text("Choose an action:", reply_markup=InlineKeyboardMarkup(keyboard))
+    else:
+        await query_or_update.edit_message_text("Choose an action:", reply_markup=InlineKeyboardMarkup(keyboard))
+
+async def media_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = query.from_user.id
     vip = check_vip_status(user_id)
 
-    if user_state.get(user_id) == "VIDEO_MENU":
-        if text == "watch":
-            file_id, msg = get_next_video_for_user(user_id, vip)
-            if file_id:
-                await update.message.reply_video(file_id)
-                log_view(user_id, "video", file_id)
-            else:
-                await update.message.reply_text(msg)
-        elif text == "upload":
-            waiting_for_media[user_id] = "video"
-            await update.message.reply_text("Send your video file (max 5MB).")
+    if query.data == "watch_videos":
+        file_id, msg = get_next_video_for_user(user_id, vip)
+        if file_id:
+            await query.message.reply_video(file_id)
+            log_view(user_id, "video", file_id)
         else:
-            await update.message.reply_text("Type 'watch' or 'upload'.")
-    elif user_state.get(user_id) == "PICTURE_MENU":
-        if text == "watch":
-            file_id, msg = get_next_picture_for_user(user_id, vip)
-            if file_id:
-                await update.message.reply_photo(file_id)
-                log_view(user_id, "picture", file_id)
-            else:
-                await update.message.reply_text(msg)
-        elif text == "upload":
-            waiting_for_media[user_id] = "picture"
-            await update.message.reply_text("Send your picture file (max 1MB).")
+            await query.message.reply_text(msg)
+
+    elif query.data == "watch_pictures":
+        file_id, msg = get_next_picture_for_user(user_id, vip)
+        if file_id:
+            await query.message.reply_photo(file_id)
+            log_view(user_id, "picture", file_id)
         else:
-            await update.message.reply_text("Type 'watch' or 'upload'.")
+            await query.message.reply_text(msg)
+
+    elif query.data == "upload_video":
+        waiting_for_media[user_id] = "video"
+        await query.edit_message_text("Send your video file (max 5MB).")
+
+    elif query.data == "upload_picture":
+        waiting_for_media[user_id] = "picture"
+        await query.edit_message_text("Send your picture file (max 1MB).")
+
+    elif query.data == "menu_back":
+        user_state[user_id] = "MAIN_MENU"
+        await show_main_menu(query, context)
 
 # =========================
 # HANDLE MEDIA UPLOAD
@@ -280,7 +290,7 @@ async def handle_media_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         waiting_for_media.pop(user_id)
 
 # =========================
-# /HELP COMMAND
+# /HELP, /RULES, /ABOUT COMMANDS
 # =========================
 BOT_OWNER_USERNAME = "Humble_Treasure"  # Replace with your Telegram username
 
@@ -291,9 +301,6 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "Or use the main menu /start to navigate the bot features."
     )
 
-# =========================
-# /RULES COMMAND
-# =========================
 async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     rules_text = (
         "📜 Bot Rules:\n\n"
@@ -307,9 +314,6 @@ async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
     await update.message.reply_text(rules_text)
 
-# =========================
-# /ABOUT COMMAND
-# =========================
 async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     about_text = (
         "🤖 About This Bot:\n\n"
@@ -340,29 +344,22 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Start
+    # Start command
     app.add_handler(CommandHandler("start", start))
-
-    # Admin stats
+    app.add_handler(CommandHandler("help", help_command))
+    app.add_handler(CommandHandler("rules", rules_command))
+    app.add_handler(CommandHandler("about", about_command))
     app.add_handler(CommandHandler("stats", stats))
 
-    # Join done
+    # CallbackQueryHandlers
     app.add_handler(CallbackQueryHandler(join_done_callback, pattern="join_done"))
-
-    # Age buttons
     app.add_handler(CallbackQueryHandler(age_button_handler, pattern="age_"))
-
-    # Gender buttons
     app.add_handler(CallbackQueryHandler(gender_button_handler, pattern="gender_"))
-
-    # Menu buttons
     app.add_handler(CallbackQueryHandler(main_menu_handler, pattern="menu_"))
+    app.add_handler(CallbackQueryHandler(media_menu_handler, pattern="^(watch_|upload_|menu_back)$"))
 
     # Country input
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_country))
-
-    # Menu text handling
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_video_picture_menu))
 
     # Media upload
     app.add_handler(MessageHandler(filters.VIDEO | filters.PHOTO, handle_media_upload))
