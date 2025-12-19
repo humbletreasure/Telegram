@@ -18,7 +18,7 @@ from media import (
     get_next_picture_for_user
 )
 from chat import add_user_to_queue, pair_users, can_chat
-from vip import check_vip_status
+from vip import init_vip_db, grant_vip, is_vip
 
 # =========================
 # BOT TOKEN
