@@ -280,6 +280,49 @@ async def handle_media_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
         waiting_for_media.pop(user_id)
 
 # =========================
+# /HELP COMMAND
+# =========================
+BOT_OWNER_USERNAME = "Humble_Treasure"  # Replace with your Telegram username
+
+async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        f"💬 Need help? You can DM the bot owner directly:\n"
+        f"Telegram: @{BOT_OWNER_USERNAME}\n\n"
+        "Or use the main menu /start to navigate the bot features."
+    )
+
+# =========================
+# /RULES COMMAND
+# =========================
+async def rules_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    rules_text = (
+        "📜 Bot Rules:\n\n"
+        "1️⃣ This space is strictly 18+.\n"
+        "2️⃣ Be respectful to other users.\n"
+        "3️⃣ Do not share illegal content.\n"
+        "4️⃣ Spamming or harassment is prohibited.\n"
+        "5️⃣ Follow instructions provided by the bot.\n"
+        "6️⃣ VIP features are optional but offer extra perks.\n\n"
+        "⚠ Violating rules may result in restriction or ban."
+    )
+    await update.message.reply_text(rules_text)
+
+# =========================
+# /ABOUT COMMAND
+# =========================
+async def about_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    about_text = (
+        "🤖 About This Bot:\n\n"
+        "This is an adult-only social bot for 18+ users to chat, "
+        "share videos and pictures safely, and enjoy VIP features.\n\n"
+        "• Fully interactive button-based navigation.\n"
+        "• Supports chat pairing, media upload, and viewing.\n"
+        "• Age verification and content restrictions in place.\n\n"
+        "Use /start to begin your experience."
+    )
+    await update.message.reply_text(about_text)
+
+# =========================
 # ADMIN /stats
 # =========================
 BOT_OWNER_ID = 7276791218  # Replace with your numeric Telegram ID
