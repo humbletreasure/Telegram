@@ -18,8 +18,6 @@ from media import (
 from chat import add_user_to_queue, pair_users, send_message, end_chat, can_chat
 from vip import check_vip_status
 
-import os
-
 # =========================
 # BOT TOKEN (FROM ENV)
 # =========================
@@ -202,7 +200,8 @@ async def handle_video_picture_menu(update: Update, context: ContextTypes.DEFAUL
         if text == "watch":
             file_id, msg = get_next_video_for_user(user_id, vip)
             if file_id:
-                await update.message.reply_text(f"🎥 Video ready! File ID: {file_id}")
+                await update.message.reply_video(file_id)
+                log_view(user_id, "video", file_id)  # <-- Analytics log
             else:
                 await update.message.reply_text(msg)
         elif text == "upload":
@@ -214,7 +213,8 @@ async def handle_video_picture_menu(update: Update, context: ContextTypes.DEFAUL
         if text == "watch":
             file_id, msg = get_next_picture_for_user(user_id, vip)
             if file_id:
-                await update.message.reply_text(f"🖼 Picture ready! File ID: {file_id}")
+                await update.message.reply_photo(file_id)
+                log_view(user_id, "picture", file_id)  # <-- Analytics log
             else:
                 await update.message.reply_text(msg)
         elif text == "upload":
@@ -248,12 +248,30 @@ async def handle_media_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
     # Upload via media.py
     if media_type == "video":
         success, msg = upload_video(user_id, file.file_id, file_size_mb)
+        if success:
+            log_upload(user_id, "video", file.file_id)  # <-- Analytics log
     else:
         success, msg = upload_picture(user_id, file.file_id, file_size_mb)
+        if success:
+            log_upload(user_id, "picture", file.file_id)  # <-- Analytics log
 
     await update.message.reply_text(msg)
     if success:
         waiting_for_media.pop(user_id)
+
+# =========================
+# ADMIN /stats COMMAND
+# =========================
+async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    # Only bot owner/admin should see full stats
+    BOT_OWNER_ID = 123456789  # Replace with your Telegram ID
+    if user_id != BOT_OWNER_ID:
+        await update.message.reply_text("❌ You are not authorized to view stats.")
+        return
+
+    global_stats = get_global_stats()
+    await update.message.reply_text(f"📊 Global Stats:\n\n{global_stats}")
 
 # =========================
 # MAIN
@@ -263,6 +281,9 @@ def main():
 
     # Start command
     app.add_handler(CommandHandler("start", start))
+
+    # Admin stats
+    app.add_handler(CommandHandler("stats", stats))
 
     # Join, age, gender, country
     app.add_handler(MessageHandler(filters.Regex(r"done"), handle_join_done))
