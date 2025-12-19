@@ -22,6 +22,7 @@ from media import (
 )
 from chat import add_user_to_queue, pair_users, send_message, end_chat, can_chat
 from vip import check_vip_status
+import asyncio
 
 # =========================
 # BOT TOKEN
@@ -173,7 +174,7 @@ async def country_button_handler(update: Update, context: ContextTypes.DEFAULT_T
 async def show_main_menu(query_or_update, context: ContextTypes.DEFAULT_TYPE):
     keyboard = [
         [InlineKeyboardButton("💬 Chat", callback_data="menu_chat")],
-        [InlineKeyboardButton("🎥 Videos/Pictures", callback_data="menu_media")],
+        [InlineKeyboardButton("🎥/🖼 Media", callback_data="menu_media")],
         [InlineKeyboardButton("⭐ VIP", callback_data="menu_vip")],
         [InlineKeyboardButton("ℹ Help", callback_data="menu_help")],
         [InlineKeyboardButton("📜 Rules", callback_data="menu_rules")],
@@ -190,7 +191,6 @@ async def main_menu_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     user_id = query.from_user.id
     data = query.data
-
     vip = check_vip_status(user_id)
 
     if data == "menu_chat":
@@ -235,13 +235,12 @@ async def media_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     await query.answer()
     user_id = query.from_user.id
-    data = query.data
     vip = check_vip_status(user_id)
+    data = query.data
 
     if data == "watch_videos":
         file_id, msg = get_next_video_for_user(user_id, vip)
         if file_id:
-            await query.edit_message_text("🎥 Playing Video...")
             await context.bot.send_video(chat_id=user_id, video=file_id)
             log_view(user_id, "video", file_id)
         else:
@@ -249,7 +248,6 @@ async def media_button_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     elif data == "watch_pictures":
         file_id, msg = get_next_picture_for_user(user_id, vip)
         if file_id:
-            await query.edit_message_text("🖼 Showing Picture...")
             await context.bot.send_photo(chat_id=user_id, photo=file_id)
             log_view(user_id, "picture", file_id)
         else:
@@ -270,7 +268,6 @@ async def handle_media_upload(update: Update, context: ContextTypes.DEFAULT_TYPE
     user_id = update.effective_user.id
     if user_id not in waiting_for_media:
         return
-
     media_type = waiting_for_media[user_id]
     file = None
     file_size_mb = 0
@@ -315,7 +312,7 @@ async def stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # =========================
 # MAIN
 # =========================
-def main():
+async def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
     # Commands
@@ -345,7 +342,7 @@ def main():
     app.add_handler(MessageHandler(filters.VIDEO | filters.PHOTO, handle_media_upload))
 
     print("Bot is running...")
-    app.run_polling()
+    await app.run_polling()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
