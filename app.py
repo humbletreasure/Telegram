@@ -8,7 +8,12 @@ from telegram.ext import (
     filters,
 )
 from database import add_user, get_user
-from media import upload_video, upload_picture, get_next_video_for_user, get_next_picture_for_user
+from media import (
+    upload_video,
+    upload_picture,
+    get_next_video_for_user,
+    get_next_picture_for_user
+)
 from chat import add_user_to_queue, pair_users, send_message, end_chat, can_chat
 from vip import check_vip_status
 
